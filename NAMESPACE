@@ -1,0 +1,4 @@
+useDynLib("RaProR", .registration = TRUE)
+export("sketch")
+export("readinandsketch")
+importFrom("utils","read.table")
