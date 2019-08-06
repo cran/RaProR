@@ -1,4 +1,4 @@
-/* 
+/*
    Sketches for Linear Regression
 
    Copyright: Jens Quedenfeld (original C++ implementation)
@@ -31,13 +31,18 @@ static double bch_gen(uint_fast64_t idx, BCH_conf c);
 static double bch4_gen(uint_fast64_t idx, BCH_conf c);
 static int bin_search(int val, const int *p, int k);
 static uint_fast64_t lcg_init();
-static void matprod_block(double *x, int nrx, int ncx, double *y, int nry, int ncy, int ory, double *z);
+static void matprod_block(double *x, int nrx, int ncx,
+			  double *y, int nry, int ncy, int ory, double *z);
+static void matprod_block_xrm(double *x, int nrx, int ncx,
+			      double *y, int nry, int ncy, int ory, double *z);
 static uint_fast64_t ruint();
 static void sample_int(int n, int max, int *out);
 SEXP sketch_cw(SEXP data, SEXP sketch_rows);
 SEXP sketch_rad(SEXP data, SEXP sketch_rows);
 SEXP sketch_srht(SEXP data, SEXP sketch_rows);
-static void rsht_rec(const int *p, int k, int q, double *data, int d_rows, int d_cols, int d_offset, double *res, int r_rows, int r_offset);
+static void srht_rec(const int *p, int k, int q,
+		     double *data, int d_rows, int d_cols, int d_offset,
+		     double *res, int r_rows, int r_offset);
 
 /* register .Call entrypoints with R */
 static const R_CallMethodDef CallEntries[] = {
@@ -127,9 +132,13 @@ bch4_gen(uint_fast64_t idx, BCH_conf c)
 
 /*
  * binary search: find k_star such that
- * k_star = argmin(i) p[i] >= val, if val <= p[k-1]
- *          k - 1,                  otherwise
+ *          / argmin(i): p[i] >= val, if val <= p[k-1]
+ * k_star = |
+ *          \ k - 1                 , otherwise
  * R's findInterval() can not be used, so roll by hand:
+ * - val: value to be found
+ * - p: array
+ * - k: length of p
  */
 int
 bin_search(int val, const int *p, int k)
@@ -265,7 +274,6 @@ matprod_block_xrm(double *x, int nrx, int ncx,
   }
 }
 
-
 /* Sample n integers without replacement from {0, ..., N-1}
  *
  * This implements Knuth's Algorithm S (TAOCP vol. 2, 3.4.2)
@@ -287,7 +295,6 @@ sample_int(int n, int N, int *out)
     }
   }
 }
-
 
 /* Calculate a Clarkson Woodruff sketch.
  *
@@ -335,8 +342,8 @@ sketch_cw(SEXP data, SEXP sketch_rows)
       s_elt[h_i + j * s_rows] += sgn * d_elt[i + j * d_rows];
     }
   }
-  UNPROTECT(1); /* sketch */
   PutRNGstate();
+  UNPROTECT(1); /* sketch */
   return sketch;
 }
 
@@ -398,8 +405,8 @@ sketch_rad(SEXP data, SEXP sketch_rows)
   sqrt_rows = sqrt((double) s_rows);
   for (j = 0; j < s_rows * cols; j++)
     s_elt[j] /= sqrt_rows;
-  UNPROTECT(3); /* sketch, p_part, r_part */
   PutRNGstate();
+  UNPROTECT(3); /* sketch, p_part, r_part */
   return sketch;
 }
 
@@ -428,11 +435,11 @@ sketch_srht(SEXP data, SEXP sketch_rows)
   /* matrix to store data rows multiplied by +/-1 */
   tmp = PROTECT(allocMatrix(REALSXP, d_rows, cols));
   t_elt = REAL(tmp);
-  /* next power of two >= s_rows */
+  /* next power of two >= d_rows */
   q = 1;
   do
     q *= 2;
-  while (q < s_rows);
+  while (q < d_rows);
   /* select row randomisation (sample without replacement) */
   p = (int *) R_alloc(s_rows, sizeof(int));
   sample_int(s_rows, q, p);
@@ -443,22 +450,22 @@ sketch_srht(SEXP data, SEXP sketch_rows)
       t_elt[i + j * d_rows] = sgn * d_elt[i + j * d_rows];
   }
   /* recursively calculate SRHT */
-  rsht_rec(p, s_rows, q, t_elt, d_rows, cols, 0, s_elt, s_rows, 0);
+  srht_rec(p, s_rows, q, t_elt, d_rows, cols, 0, s_elt, s_rows, 0);
   /* normalize */
   sqrt_rows = sqrt((double) s_rows);
   for (j = 0; j < s_rows * cols; j++)
     s_elt[j] /= sqrt_rows;
-  UNPROTECT(2); /* sketch, tmp */
   PutRNGstate();
+  UNPROTECT(2); /* sketch, tmp */
   return sketch;
 }
 
 void
-rsht_rec(const int *p, int k, int q, double *data,
-	 int d_rows, int d_cols, int d_offset,
+srht_rec(const int *p, int k, int q,
+	 double *data, int d_rows, int d_cols, int d_offset,
 	 double *res, int r_rows, int r_offset)
 {
-  int cnt, atmp, btmp, k_new;
+  int cnt, atmp, btmp, k_new, q2;
   unsigned int i, j;
   double hd, *d_sub;
 
@@ -466,8 +473,9 @@ rsht_rec(const int *p, int k, int q, double *data,
     return;
   if (k == 1) {
     cnt = 0;
-    for (j = 0; j < d_cols; j++)  /* 1st col of hadamard matrix is ones */
+    for (j = 0; j < d_cols; j++) { /* 1st col of hadamard matrix is ones */
       res[r_offset + j * r_rows] += data[0 + j * d_rows];
+    }
     for (i = 1; i < d_rows; i++) {
       btmp = i;
       atmp = p[0];
@@ -477,22 +485,27 @@ rsht_rec(const int *p, int k, int q, double *data,
 	btmp >>= 1;
       }
       cnt ^= atmp & 1;
-      hd = cnt ? -1 : 1;
+      hd = cnt ? -1.0 : 1.0;
       for (j = 0; j < d_cols; j ++)
 	res[r_offset + j * r_rows] += hd * data[i + j * d_rows];
     }
     return;
   }
-  k_new = bin_search(d_offset + q/2, p, k);
-  d_sub = (double *) R_alloc(q/2 * d_cols, sizeof(double));
-  /* first recursion */
+  q2 = q / 2;
+  k_new = bin_search(d_offset + q2, p, k);
+  d_sub = (double *) R_alloc(q2 * d_cols, sizeof(double));
+  /* first recursion: add lower half to upper half */
   for (j = 0; j < d_cols; j++)
-    for (i = 0; i < q/2; i++)
-      d_sub[i + j*q/2] = data[i + j * d_rows] + (i+q/2 >= d_rows ? 0 : data[i + q/2 + j * d_rows]);
-  rsht_rec(p, k_new, q/2, d_sub, q/2, d_cols, d_offset, res, r_rows, r_offset);
-  /* second recursion */
+    for (i = 0; i < q2; i++)
+      d_sub[i + j*q2] = data[i + j*d_rows] + (i + q2 >= d_rows ? 0 : data[i + q2 + j*d_rows]);
+  srht_rec(p, k_new, q2,
+	   d_sub, q2, d_cols, d_offset,
+	   res, r_rows, r_offset);
+  /* second recursion: subtract lower half from upper half */
   for (j = 0; j < d_cols; j++)
-    for (i = 0; i < q/2; i++)
-      d_sub[i + j*q/2] = data[i + j * d_rows] - (i+q/2 >= d_rows ? 0 : data[i + q/2 + j * d_rows]);
-  rsht_rec(p + k_new, k - k_new, q/2, d_sub, q/2, d_cols, d_offset + q/2, res, r_rows, r_offset + k_new);
+    for (i = 0; i < q2; i++)
+      d_sub[i + j*q2] = data[i + j*d_rows] - (i+q2 >= d_rows ? 0 : data[i + q2 + j*d_rows]);
+  srht_rec(p + k_new, k - k_new, q2,
+	   d_sub, q2, d_cols, d_offset + q2,
+	   res, r_rows, r_offset + k_new);
 }

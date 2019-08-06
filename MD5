@@ -1,8 +1,8 @@
-e0cb853c5af2c4cba8e1b4e11a30b096 *DESCRIPTION
+68a1c45afee26553443f32afa3d0a89a *DESCRIPTION
 38adf0c024aba3b5b3fdb45052079b01 *NAMESPACE
-e2ba995f9361605a63292fdc2da0b991 *R/sketch.R
+dbe766517c8600808955cfcea5a82eb8 *R/sketch.R
 d4ba18c9355f6df87e1dcec6bd3c4f78 *man/RaProR-package.Rd
 ed8564805fa4b8378d4bb94f9bab2f87 *man/readinandsketch.Rd
 395fc1e3c1676e03a5e08b545a65e38b *man/sketch.Rd
 f65b72f8e5a4bc2a09f3f222f0d0365f *src/Makevars
-5ddf7791171514dbf5f2d6d40bfc1456 *src/sketch.c
+95844f42e5a374a365b3476d1640f807 *src/sketch.c

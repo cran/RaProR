@@ -39,6 +39,16 @@ sketch <- function(data, file, epsilon = NULL, obs_sketch = NULL, warn = TRUE,
                                "consider using larger epsilon with method ",
                                method, "."))
         } else {
+            if (method == "C") {
+                next_power_of_two <- as.integer(2^ceiling(log(obs_sketch,
+                                                              base = 2)))
+                if (obs_sketch != next_power_of_two) {
+                    warning(paste0("Rounding up obs_sketch from ", obs_sketch,
+                                   " to ", next_power_of_two,
+                                   " for method 'C'."))
+                    obs_sketch <- next_power_of_two
+                }
+            }
             if (obs_sketch > n)
                 warning(paste0("Sketch has more rows than original data set, ",
                                "consider using smaller obs_sketch with method ",
